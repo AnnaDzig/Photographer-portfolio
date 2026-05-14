@@ -72,12 +72,14 @@ function setupBurger() {
 }
 
 /* =========================
-     PORTFOLIO SLIDER (PF)
-     ========================= */
+   PORTFOLIO SLIDER (PF)
+   ========================= */
 function setupPortfolioSlider() {
   const viewport = document.querySelector(".pf-viewport");
   const track = document.querySelector(".pf-track");
+
   if (!viewport || !track) return;
+
   const PF_IMAGES = [
     { src: "image/png/img-20.png", alt: "Portfolio photo 1" },
     { src: "image/png/img-17.png", alt: "Portfolio photo 2" },
@@ -103,118 +105,136 @@ function setupPortfolioSlider() {
 
   const PATTERN = {
     desktop: [
-      { w: 360, h: 520, mt: 56, mb: 0 },
-      { w: 280, h: 374, mt: 0, mb: 158 },
-      { w: 220, h: 220, mt: 0, mb: 215 },
-      { w: 280, h: 374, mt: 0, mb: 280 },
-      { w: 400, h: 534, mt: 0, mb: 0 },
+      { w: 270, h: 380, y: 70 },
+      { w: 180, h: 250, y: -120 },
+      { w: 360, h: 500, y: 20 },
+      { w: 210, h: 210, y: -170 },
+      { w: 260, h: 360, y: 120 },
+      { w: 420, h: 560, y: -10 },
+      { w: 190, h: 260, y: -135 },
+      { w: 300, h: 420, y: 80 },
     ],
     tablet: [
-      { w: 260, h: 360, mt: 40, mb: 0 },
-      { w: 280, h: 374, mt: 0, mb: 36 },
-      { w: 220, h: 220, mt: 0, mb: 72 },
-      { w: 280, h: 374, mt: 0, mb: 110 },
-      { w: 400, h: 534, mt: 0, mb: 0 },
+      { w: 220, h: 310, y: 55 },
+      { w: 160, h: 220, y: -95 },
+      { w: 300, h: 420, y: 15 },
+      { w: 180, h: 180, y: -135 },
+      { w: 220, h: 310, y: 95 },
+      { w: 340, h: 460, y: -5 },
     ],
     mobile: [
-      { w: 180, h: 250, mt: 20, mb: 0 },
-      { w: 160, h: 220, mt: 64, mb: 0 },
-      { w: 120, h: 120, mt: 84, mb: 0 },
-      { w: 180, h: 250, mt: 0, mb: 52 },
-      { w: 220, h: 300, mt: 0, mb: 40 },
+      { w: 150, h: 210, y: 35 },
+      { w: 120, h: 170, y: -60 },
+      { w: 210, h: 280, y: 10 },
+      { w: 110, h: 110, y: -80 },
+      { w: 160, h: 220, y: 60 },
+      { w: 230, h: 300, y: -5 },
     ],
   };
 
-  const getBP = () => {
-    const w = window.innerWidth;
-    if (w >= 1201) return "desktop";
-    if (w >= 601) return "tablet";
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const getBreakpoint = () => {
+    if (window.innerWidth >= 1201) return "desktop";
+    if (window.innerWidth >= 601) return "tablet";
     return "mobile";
   };
-  const getPatternItem = (index, bp) => {
-    const p = PATTERN[bp];
-    return p[index % p.length];
+
+  const getPatternItem = (index) => {
+    const currentPattern = PATTERN[getBreakpoint()];
+    return currentPattern[index % currentPattern.length];
   };
 
   let shift = 0;
   let baseOffset = 0;
-  let minShift = 0,
-    maxShift = 0;
-  let gapPx = 20;
+  let minShift = 0;
+  let maxShift = 0;
+  let rafId = null;
+  let hoverSpeed = 0;
+  let lastTs = 0;
+
+  const hoverMedia = window.matchMedia("(hover: hover) and (pointer: fine)");
 
   function renderSlides() {
     track.innerHTML = "";
-    const bp = getBP();
 
-    PF_IMAGES.forEach((item, i) => {
+    PF_IMAGES.forEach((item, index) => {
+      const pattern = getPatternItem(index);
+
+      const card = document.createElement("figure");
+      card.className = "pf-card";
+
+      card.style.setProperty("--pf-w", `${pattern.w}px`);
+      card.style.setProperty("--pf-h", `${pattern.h}px`);
+      card.style.setProperty("--pf-y", `${pattern.y}px`);
+
       const img = document.createElement("img");
-      const pat = getPatternItem(i, bp);
-
+      img.className = "pf-img";
       img.src = item.src;
       img.alt = item.alt || "Portfolio photo";
-      img.className = "pf";
       img.loading = "lazy";
+      img.decoding = "async";
 
-      img.style.width = `${pat.w}px`;
-      img.style.height = `${pat.h}px`;
-      img.style.objectFit = "cover";
-      img.style.marginTop = pat.mt ? `${pat.mt}px` : "0";
-      img.style.marginBottom = pat.mb ? `${pat.mb}px` : "0";
-
-      track.appendChild(img);
+      card.appendChild(img);
+      track.appendChild(card);
     });
   }
 
+  function getContentWidth() {
+    const cards = Array.from(track.children);
+    const gap = parseFloat(getComputedStyle(track).columnGap) || 28;
+
+    const cardsWidth = cards.reduce((sum, card) => {
+      return sum + card.getBoundingClientRect().width;
+    }, 0);
+
+    return cardsWidth + gap * Math.max(0, cards.length - 1);
+  }
+
   function calcGeometry() {
-    const cs = getComputedStyle(track);
-    const gapStr = cs.gap || cs.columnGap || "20px";
-    gapPx = parseFloat(gapStr) || 20;
+    const viewportWidth = viewport.clientWidth;
+    const contentWidth = getContentWidth();
 
-    const slides = Array.from(track.children);
-    const widths = slides.map((el) => el.getBoundingClientRect().width);
-    const contentWidth =
-      widths.reduce((a, b) => a + b, 0) +
-      gapPx * Math.max(0, slides.length - 1);
-
-    const vw = viewport.clientWidth;
-
-    baseOffset = (vw - contentWidth) / 2;
+    baseOffset = (viewportWidth - contentWidth) / 2;
 
     maxShift = -baseOffset;
-    minShift = vw - contentWidth - baseOffset;
+    minShift = viewportWidth - contentWidth - baseOffset;
 
     shift = clamp(shift, minShift, maxShift);
 
     applyTransform();
   }
 
-  function clamp(v, a, b) {
-    return Math.min(Math.max(v, a), b);
-  }
-
   function applyTransform() {
-    const y = window.innerWidth > 600 ? "-50%" : "0";
     const x = Math.round(baseOffset + shift);
-    track.style.transform = `translate3d(${x}px, ${y}, 0)`;
+    track.style.transform = `translate3d(${x}px, -50%, 0)`;
   }
 
-  let rafId = null;
-  let hoverSpeed = 0; // px/s
-  let lastTs = 0;
-  const mqlHover = window.matchMedia("(hover: hover) and (pointer: fine)");
+  function step(timestamp) {
+    const delta = Math.max(0, (timestamp - lastTs) / 1000);
+    lastTs = timestamp;
 
-  function onPointerMoveDesktop(e) {
+    if (hoverSpeed !== 0) {
+      shift = clamp(shift + hoverSpeed * delta, minShift, maxShift);
+      applyTransform();
+      rafId = requestAnimationFrame(step);
+    } else {
+      rafId = null;
+    }
+  }
+
+  function onPointerMoveDesktop(event) {
     const rect = viewport.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const w = rect.width;
-    const zone = w * 0.3;
+    const x = event.clientX - rect.left;
+    const width = rect.width;
+    const zone = width * 0.28;
 
     if (x < zone) {
-      const t = 1 - x / zone;
-      hoverSpeed = +(160 + 520 * t);
-    } else if (x > w - zone) {
-      const t = 1 - (w - x) / zone;
-      hoverSpeed = -(160 + 520 * t);
+      const power = 1 - x / zone;
+      hoverSpeed = 180 + 520 * power;
+    } else if (x > width - zone) {
+      const power = 1 - (width - x) / zone;
+      hoverSpeed = -(180 + 520 * power);
     } else {
       hoverSpeed = 0;
     }
@@ -229,97 +249,120 @@ function setupPortfolioSlider() {
     hoverSpeed = 0;
   }
 
-  function step(ts) {
-    const dt = Math.max(0, (ts - lastTs) / 1000);
-    lastTs = ts;
-
-    if (hoverSpeed !== 0) {
-      shift = clamp(shift + hoverSpeed * dt, minShift, maxShift);
-      applyTransform();
-      rafId = requestAnimationFrame(step);
-    } else {
-      rafId = null;
-    }
-  }
-
   let dragging = false;
   let startX = 0;
   let startShift = 0;
 
-  const isCoarse = () =>
-    window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 600;
+  const isTouchLike = () => {
+    return (
+      window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 600
+    );
+  };
 
-  function onPointerDown(e) {
-    if (!isCoarse()) return;
+  function onPointerDown(event) {
+    if (!isTouchLike()) return;
+
     dragging = true;
-    startX = e.clientX;
+    startX = event.clientX;
     startShift = shift;
-    viewport.setPointerCapture(e.pointerId);
-    e.preventDefault();
+
+    viewport.setPointerCapture(event.pointerId);
+    viewport.classList.add("is-dragging");
+
+    event.preventDefault();
   }
-  function onPointerMove(e) {
+
+  function onPointerMove(event) {
     if (!dragging) return;
-    const dx = e.clientX - startX;
+
+    const dx = event.clientX - startX;
     shift = clamp(startShift + dx, minShift, maxShift);
+
     applyTransform();
-    e.preventDefault();
+    event.preventDefault();
   }
-  function onPointerUp(e) {
+
+  function onPointerUp(event) {
     if (!dragging) return;
+
     dragging = false;
-    viewport.releasePointerCapture(e.pointerId);
-  }
+    viewport.classList.remove("is-dragging");
 
-  function init() {
-    renderSlides();
-    const imgs = Array.from(track.querySelectorAll("img"));
-    let left = imgs.length;
-    const tryCalc = () => {
-      left--;
-      if (left <= 0) {
-        calcGeometry();
-      }
-    };
-    if (left === 0) calcGeometry();
-    imgs.forEach((img) => {
-      if (img.complete) tryCalc();
-      else img.addEventListener("load", tryCalc, { once: true });
-    });
-
-    viewport.onpointerdown = onPointerDown;
-    viewport.onpointermove = onPointerMove;
-    viewport.onpointerup = onPointerUp;
-    viewport.onpointercancel = onPointerUp;
-
-    toggleHoverHandlers();
+    if (viewport.hasPointerCapture(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
   }
 
   function toggleHoverHandlers() {
     viewport.removeEventListener("pointermove", onPointerMoveDesktop);
     viewport.removeEventListener("pointerleave", onPointerLeaveDesktop);
 
-    if (mqlHover.matches) {
+    if (hoverMedia.matches) {
       viewport.addEventListener("pointermove", onPointerMoveDesktop);
       viewport.addEventListener("pointerleave", onPointerLeaveDesktop);
     }
   }
 
+  function waitForImagesThenCalc() {
+    const images = Array.from(track.querySelectorAll("img"));
+
+    if (images.length === 0) {
+      calcGeometry();
+      return;
+    }
+
+    let loadedCount = 0;
+
+    const done = () => {
+      loadedCount++;
+
+      if (loadedCount >= images.length) {
+        calcGeometry();
+      }
+    };
+
+    images.forEach((img) => {
+      if (img.complete) {
+        done();
+      } else {
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+      }
+    });
+  }
+
+  function init() {
+    renderSlides();
+    waitForImagesThenCalc();
+
+    viewport.addEventListener("pointerdown", onPointerDown);
+    viewport.addEventListener("pointermove", onPointerMove);
+    viewport.addEventListener("pointerup", onPointerUp);
+    viewport.addEventListener("pointercancel", onPointerUp);
+
+    toggleHoverHandlers();
+  }
+
   init();
 
   let resizeTimer = 0;
+
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
+
     resizeTimer = setTimeout(() => {
-      const prevShift = shift;
+      const oldShift = shift;
+
       renderSlides();
+      waitForImagesThenCalc();
+
+      shift = oldShift;
       calcGeometry();
-      shift = clamp(prevShift, minShift, maxShift);
-      applyTransform();
       toggleHoverHandlers();
     }, 120);
   });
 
-  mqlHover.addEventListener?.("change", toggleHoverHandlers);
+  hoverMedia.addEventListener?.("change", toggleHoverHandlers);
 }
 
 /* =========================
