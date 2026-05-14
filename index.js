@@ -141,19 +141,17 @@ function setupPortfolioSlider() {
   };
 
   const getPatternItem = (index) => {
-    const currentPattern = PATTERN[getBreakpoint()];
-    return currentPattern[index % currentPattern.length];
+    const pattern = PATTERN[getBreakpoint()];
+    return pattern[index % pattern.length];
   };
 
-  let shift = 0;
-  let baseOffset = 0;
-  let minShift = 0;
-  let maxShift = 0;
+  let x = 0;
+  let minX = 0;
+  let maxX = 0;
+
   let rafId = null;
   let hoverSpeed = 0;
-  let lastTs = 0;
-
-  const hoverMedia = window.matchMedia("(hover: hover) and (pointer: fine)");
+  let lastTime = 0;
 
   function renderSlides() {
     track.innerHTML = "";
@@ -161,165 +159,57 @@ function setupPortfolioSlider() {
     PF_IMAGES.forEach((item, index) => {
       const pattern = getPatternItem(index);
 
-      const card = document.createElement("figure");
-      card.className = "pf-card";
+      const figure = document.createElement("figure");
+      figure.className = "pf-card";
 
-      card.style.setProperty("--pf-w", `${pattern.w}px`);
-      card.style.setProperty("--pf-h", `${pattern.h}px`);
-      card.style.setProperty("--pf-y", `${pattern.y}px`);
+      figure.style.setProperty("--pf-w", `${pattern.w}px`);
+      figure.style.setProperty("--pf-h", `${pattern.h}px`);
+      figure.style.setProperty("--pf-y", `${pattern.y}px`);
 
       const img = document.createElement("img");
       img.className = "pf-img";
       img.src = item.src;
-      img.alt = item.alt || "Portfolio photo";
+      img.alt = item.alt;
       img.loading = "lazy";
       img.decoding = "async";
 
-      card.appendChild(img);
-      track.appendChild(card);
+      figure.appendChild(img);
+      track.appendChild(figure);
     });
   }
 
-  function getContentWidth() {
-    const cards = Array.from(track.children);
-    const gap = parseFloat(getComputedStyle(track).columnGap) || 28;
-
-    const cardsWidth = cards.reduce((sum, card) => {
-      return sum + card.getBoundingClientRect().width;
-    }, 0);
-
-    return cardsWidth + gap * Math.max(0, cards.length - 1);
-  }
-
-  function calcGeometry() {
+  function calculateLimits() {
     const viewportWidth = viewport.clientWidth;
-    const contentWidth = getContentWidth();
+    const trackWidth = track.scrollWidth;
 
-    baseOffset = (viewportWidth - contentWidth) / 2;
+    maxX = 0;
+    minX = Math.min(0, viewportWidth - trackWidth);
 
-    maxShift = -baseOffset;
-    minShift = viewportWidth - contentWidth - baseOffset;
-
-    shift = clamp(shift, minShift, maxShift);
-
+    x = clamp(x, minX, maxX);
     applyTransform();
   }
 
   function applyTransform() {
-    const x = Math.round(baseOffset + shift);
-    track.style.transform = `translate3d(${x}px, -50%, 0)`;
+    track.style.transform = `translate3d(${Math.round(x)}px, -50%, 0)`;
   }
 
-  function step(timestamp) {
-    const delta = Math.max(0, (timestamp - lastTs) / 1000);
-    lastTs = timestamp;
-
-    if (hoverSpeed !== 0) {
-      shift = clamp(shift + hoverSpeed * delta, minShift, maxShift);
-      applyTransform();
-      rafId = requestAnimationFrame(step);
-    } else {
-      rafId = null;
-    }
-  }
-
-  function onPointerMoveDesktop(event) {
-    const rect = viewport.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const width = rect.width;
-    const zone = width * 0.28;
-
-    if (x < zone) {
-      const power = 1 - x / zone;
-      hoverSpeed = 180 + 520 * power;
-    } else if (x > width - zone) {
-      const power = 1 - (width - x) / zone;
-      hoverSpeed = -(180 + 520 * power);
-    } else {
-      hoverSpeed = 0;
-    }
-
-    if (rafId === null && hoverSpeed !== 0) {
-      lastTs = performance.now();
-      rafId = requestAnimationFrame(step);
-    }
-  }
-
-  function onPointerLeaveDesktop() {
-    hoverSpeed = 0;
-  }
-
-  let dragging = false;
-  let startX = 0;
-  let startShift = 0;
-
-  const isTouchLike = () => {
-    return (
-      window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 600
-    );
-  };
-
-  function onPointerDown(event) {
-    if (!isTouchLike()) return;
-
-    dragging = true;
-    startX = event.clientX;
-    startShift = shift;
-
-    viewport.setPointerCapture(event.pointerId);
-    viewport.classList.add("is-dragging");
-
-    event.preventDefault();
-  }
-
-  function onPointerMove(event) {
-    if (!dragging) return;
-
-    const dx = event.clientX - startX;
-    shift = clamp(startShift + dx, minShift, maxShift);
-
-    applyTransform();
-    event.preventDefault();
-  }
-
-  function onPointerUp(event) {
-    if (!dragging) return;
-
-    dragging = false;
-    viewport.classList.remove("is-dragging");
-
-    if (viewport.hasPointerCapture(event.pointerId)) {
-      viewport.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  function toggleHoverHandlers() {
-    viewport.removeEventListener("pointermove", onPointerMoveDesktop);
-    viewport.removeEventListener("pointerleave", onPointerLeaveDesktop);
-
-    if (hoverMedia.matches) {
-      viewport.addEventListener("pointermove", onPointerMoveDesktop);
-      viewport.addEventListener("pointerleave", onPointerLeaveDesktop);
-    }
-  }
-
-  function waitForImagesThenCalc() {
+  function waitForImages() {
     const images = Array.from(track.querySelectorAll("img"));
 
-    if (images.length === 0) {
-      calcGeometry();
+    if (!images.length) {
+      calculateLimits();
       return;
     }
 
-    let loadedCount = 0;
+    let loaded = 0;
 
-    const done = () => {
-      loadedCount++;
+    function done() {
+      loaded++;
 
-      if (loadedCount >= images.length) {
-        calcGeometry();
+      if (loaded >= images.length) {
+        calculateLimits();
       }
-    };
+    }
 
     images.forEach((img) => {
       if (img.complete) {
@@ -331,16 +221,95 @@ function setupPortfolioSlider() {
     });
   }
 
+  function animate(timestamp) {
+    const delta = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+
+    if (hoverSpeed !== 0) {
+      x = clamp(x + hoverSpeed * delta, minX, maxX);
+      applyTransform();
+      rafId = requestAnimationFrame(animate);
+    } else {
+      rafId = null;
+    }
+  }
+
+  function startAnimation() {
+    if (rafId === null) {
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(animate);
+    }
+  }
+
+  function handleDesktopMove(event) {
+    const rect = viewport.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const width = rect.width;
+    const zone = width * 0.3;
+
+    if (mouseX < zone) {
+      const power = 1 - mouseX / zone;
+      hoverSpeed = 180 + 520 * power;
+    } else if (mouseX > width - zone) {
+      const power = 1 - (width - mouseX) / zone;
+      hoverSpeed = -(180 + 520 * power);
+    } else {
+      hoverSpeed = 0;
+    }
+
+    startAnimation();
+  }
+
+  function handleDesktopLeave() {
+    hoverSpeed = 0;
+  }
+
+  let isDragging = false;
+  let startX = 0;
+  let startSliderX = 0;
+
+  function handlePointerDown(event) {
+    isDragging = true;
+    startX = event.clientX;
+    startSliderX = x;
+
+    hoverSpeed = 0;
+    viewport.classList.add("is-dragging");
+    viewport.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event) {
+    if (!isDragging) return;
+
+    const dx = event.clientX - startX;
+    x = clamp(startSliderX + dx, minX, maxX);
+    applyTransform();
+
+    event.preventDefault();
+  }
+
+  function handlePointerUp(event) {
+    if (!isDragging) return;
+
+    isDragging = false;
+    viewport.classList.remove("is-dragging");
+
+    if (viewport.hasPointerCapture(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
+  }
+
   function init() {
     renderSlides();
-    waitForImagesThenCalc();
+    waitForImages();
 
-    viewport.addEventListener("pointerdown", onPointerDown);
-    viewport.addEventListener("pointermove", onPointerMove);
-    viewport.addEventListener("pointerup", onPointerUp);
-    viewport.addEventListener("pointercancel", onPointerUp);
+    viewport.addEventListener("mousemove", handleDesktopMove);
+    viewport.addEventListener("mouseleave", handleDesktopLeave);
 
-    toggleHoverHandlers();
+    viewport.addEventListener("pointerdown", handlePointerDown);
+    viewport.addEventListener("pointermove", handlePointerMove);
+    viewport.addEventListener("pointerup", handlePointerUp);
+    viewport.addEventListener("pointercancel", handlePointerUp);
   }
 
   init();
@@ -351,18 +320,10 @@ function setupPortfolioSlider() {
     clearTimeout(resizeTimer);
 
     resizeTimer = setTimeout(() => {
-      const oldShift = shift;
-
       renderSlides();
-      waitForImagesThenCalc();
-
-      shift = oldShift;
-      calcGeometry();
-      toggleHoverHandlers();
+      waitForImages();
     }, 120);
   });
-
-  hoverMedia.addEventListener?.("change", toggleHoverHandlers);
 }
 
 /* =========================

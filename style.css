@@ -1495,6 +1495,7 @@ img {
   .pf-viewport {
     height: 320px;
   }
+
   .pf-track > .pf:first-child,
   .pf-track > .pf:last-child {
     margin-left: 0;
