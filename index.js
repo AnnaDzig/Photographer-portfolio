@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* =========================================
-        BURGER 
+        BURGER
    ========================================= */
 function setupBurger() {
   const header = document.querySelector(".site-header");
@@ -21,6 +21,7 @@ function setupBurger() {
     const h = header.offsetHeight || 56;
     document.documentElement.style.setProperty("--header-h", `${h}px`);
   };
+
   setHeaderH();
   window.addEventListener("resize", setHeaderH);
 
@@ -33,10 +34,14 @@ function setupBurger() {
       drawer.hidden = false;
       drawer.classList.add("offcanvas--open");
       drawer.setAttribute("aria-hidden", "false");
+
       const first = drawer.querySelector(
-        'a,button,[tabindex]:not([tabindex="-1"])',
+        'a, button, [tabindex]:not([tabindex="-1"])',
       );
-      first && first.focus({ preventScroll: true });
+
+      if (first) {
+        first.focus({ preventScroll: true });
+      }
     }
   };
 
@@ -48,31 +53,44 @@ function setupBurger() {
     if (drawer) {
       drawer.classList.remove("offcanvas--open");
       drawer.setAttribute("aria-hidden", "true");
-      setTimeout(() => (drawer.hidden = true), 350);
+
+      setTimeout(() => {
+        drawer.hidden = true;
+      }, 350);
     }
   };
 
   const isOpen = () => burger.classList.contains("is-active");
 
-  burger.addEventListener("click", () => (isOpen() ? close() : open()));
+  burger.addEventListener("click", () => {
+    if (isOpen()) {
+      close();
+    } else {
+      open();
+    }
+  });
 
   if (drawer) {
-    drawer.querySelectorAll('a[href^="#"]').forEach((a) => {
-      a.addEventListener("click", close);
+    drawer.querySelectorAll('a[href^="#"]').forEach((link) => {
+      link.addEventListener("click", close);
     });
   }
 
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && isOpen()) close();
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isOpen()) {
+      close();
+    }
   });
 
   window.addEventListener("resize", () => {
-    if (window.innerWidth >= 769 && isOpen()) close();
+    if (window.innerWidth >= 769 && isOpen()) {
+      close();
+    }
   });
 }
 
 /* =========================
-   PORTFOLIO SLIDER (PF)
+   PORTFOLIO SLIDER
    ========================= */
 function setupPortfolioSlider() {
   const section = document.querySelector(".portfolio");
@@ -153,17 +171,19 @@ function setupPortfolioSlider() {
   let x = 0;
   let minX = 0;
   let maxX = 0;
-  let rafId = null;
+
+  let animationFrameId = null;
   let lastTime = 0;
-
   let hoverSpeed = 0;
-  let isDragging = false;
-  let startX = 0;
-  let startSliderX = 0;
 
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartSliderX = 0;
+
+  let isReady = false;
+  let shouldPlayIntro = false;
   let hasIntroPlayed = false;
-  let introActive = false;
-  let introTargetX = 0;
+  let isIntroPlaying = false;
 
   function renderSlides() {
     track.innerHTML = "";
@@ -178,20 +198,16 @@ function setupPortfolioSlider() {
       figure.style.setProperty("--pf-h", `${pattern.h}px`);
       figure.style.setProperty("--pf-y", `${pattern.y}px`);
 
-      const img = document.createElement("img");
-      img.className = "pf-img";
-      img.src = item.src;
-      img.alt = item.alt;
-      img.loading = "lazy";
-      img.decoding = "async";
+      const image = document.createElement("img");
+      image.className = "pf-img";
+      image.src = item.src;
+      image.alt = item.alt;
+      image.loading = "lazy";
+      image.decoding = "async";
 
-      figure.appendChild(img);
+      figure.appendChild(image);
       track.appendChild(figure);
     });
-  }
-
-  function applyTransform() {
-    track.style.transform = `translate3d(${Math.round(x)}px, -50%, 0)`;
   }
 
   function calculateLimits() {
@@ -205,87 +221,91 @@ function setupPortfolioSlider() {
     applyTransform();
   }
 
+  function applyTransform() {
+    track.style.transform = `translate3d(${Math.round(x)}px, -50%, 0)`;
+  }
+
+  function markReady() {
+    calculateLimits();
+    isReady = true;
+
+    if (shouldPlayIntro) {
+      playIntroAnimation();
+    }
+  }
+
   function waitForImages() {
     const images = Array.from(track.querySelectorAll("img"));
 
     if (!images.length) {
-      calculateLimits();
+      markReady();
       return;
     }
 
-    let loaded = 0;
+    let completedImages = 0;
 
-    function done() {
-      loaded++;
+    const done = () => {
+      completedImages += 1;
 
-      if (loaded >= images.length) {
-        calculateLimits();
+      if (completedImages >= images.length) {
+        markReady();
       }
-    }
+    };
 
-    images.forEach((img) => {
-      if (img.complete) {
+    images.forEach((image) => {
+      if (image.complete) {
         done();
       } else {
-        img.addEventListener("load", done, { once: true });
-        img.addEventListener("error", done, { once: true });
+        image.addEventListener("load", done, { once: true });
+        image.addEventListener("error", done, { once: true });
       }
     });
-  }
-
-  function startAnimation() {
-    if (rafId !== null) return;
-
-    lastTime = performance.now();
-    rafId = requestAnimationFrame(animate);
-  }
-
-  function stopAnimationIfIdle() {
-    if (introActive || hoverSpeed !== 0 || isDragging) return;
-
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
-
-  function animate(timestamp) {
-    const delta = Math.min((timestamp - lastTime) / 1000, 0.04);
-    lastTime = timestamp;
-
-    if (introActive) {
-      x += (introTargetX - x) * 0.075;
-
-      if (Math.abs(introTargetX - x) < 1) {
-        x = introTargetX;
-        introActive = false;
-        track.classList.add("pf-track--intro-done");
-      }
-
-      applyTransform();
-    }
-
-    if (!introActive && hoverSpeed !== 0 && !isDragging) {
-      x = clamp(x + hoverSpeed * delta, minX, maxX);
-      applyTransform();
-    }
-
-    rafId = requestAnimationFrame(animate);
-    stopAnimationIfIdle();
   }
 
   function playIntroAnimation() {
     if (hasIntroPlayed || prefersReducedMotion) return;
 
+    if (!isReady) {
+      shouldPlayIntro = true;
+      return;
+    }
+
+    if (minX === 0) return;
+
     hasIntroPlayed = true;
-    introActive = true;
+    shouldPlayIntro = false;
+    isIntroPlaying = true;
 
-    const introOffset = viewport.clientWidth * 0.65;
+    const startX = minX * 0.45;
+    const endX = 0;
+    const duration = 1300;
 
-    x = clamp(-introOffset, minX, maxX);
-    introTargetX = 0;
+    let startTime = null;
 
-    track.classList.add("pf-track--intro");
+    x = startX;
     applyTransform();
-    startAnimation();
+
+    function animateIntro(timestamp) {
+      if (!startTime) {
+        startTime = timestamp;
+      }
+
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+
+      x = startX + (endX - startX) * easedProgress;
+      applyTransform();
+
+      if (progress < 1 && !isDragging) {
+        requestAnimationFrame(animateIntro);
+      } else {
+        x = endX;
+        isIntroPlaying = false;
+        applyTransform();
+      }
+    }
+
+    requestAnimationFrame(animateIntro);
   }
 
   function setupIntroObserver() {
@@ -304,49 +324,80 @@ function setupPortfolioSlider() {
         }
       },
       {
-        threshold: 0.35,
+        threshold: 0.25,
       },
     );
 
     observer.observe(section);
   }
 
-  function handleDesktopMove(event) {
-    if (isDragging) return;
+  function startHoverAnimation() {
+    if (animationFrameId !== null) return;
+
+    lastTime = performance.now();
+    animationFrameId = requestAnimationFrame(animateHover);
+  }
+
+  function stopHoverAnimation() {
+    if (animationFrameId === null) return;
+
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+
+  function animateHover(timestamp) {
+    const delta = Math.min((timestamp - lastTime) / 1000, 0.04);
+    lastTime = timestamp;
+
+    if (!isDragging && !isIntroPlaying && hoverSpeed !== 0) {
+      x = clamp(x + hoverSpeed * delta, minX, maxX);
+      applyTransform();
+
+      animationFrameId = requestAnimationFrame(animateHover);
+      return;
+    }
+
+    stopHoverAnimation();
+  }
+
+  function handleMouseMove(event) {
+    if (isDragging || isIntroPlaying) return;
 
     const rect = viewport.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const width = rect.width;
-    const zone = width * 0.3;
+    const activeZone = width * 0.3;
 
-    if (mouseX < zone) {
-      const power = 1 - mouseX / zone;
+    if (mouseX < activeZone) {
+      const power = 1 - mouseX / activeZone;
 
-      // Mouse on the left side -> images move to the right.
+      // Mouse on left side: images move to the right.
       hoverSpeed = 180 + 520 * power;
-    } else if (mouseX > width - zone) {
-      const power = 1 - (width - mouseX) / zone;
+    } else if (mouseX > width - activeZone) {
+      const power = 1 - (width - mouseX) / activeZone;
 
-      // Mouse on the right side -> images move to the left.
+      // Mouse on right side: images move to the left.
       hoverSpeed = -(180 + 520 * power);
     } else {
       hoverSpeed = 0;
     }
 
-    startAnimation();
+    if (hoverSpeed !== 0) {
+      startHoverAnimation();
+    }
   }
 
-  function handleDesktopLeave() {
+  function handleMouseLeave() {
     hoverSpeed = 0;
   }
 
   function handlePointerDown(event) {
     isDragging = true;
-    startX = event.clientX;
-    startSliderX = x;
-
-    introActive = false;
+    isIntroPlaying = false;
     hoverSpeed = 0;
+
+    dragStartX = event.clientX;
+    dragStartSliderX = x;
 
     viewport.classList.add("is-dragging");
     viewport.setPointerCapture(event.pointerId);
@@ -355,10 +406,11 @@ function setupPortfolioSlider() {
   function handlePointerMove(event) {
     if (!isDragging) return;
 
-    const dx = event.clientX - startX;
-    x = clamp(startSliderX + dx, minX, maxX);
+    const distance = event.clientX - dragStartX;
 
+    x = clamp(dragStartSliderX + distance, minX, maxX);
     applyTransform();
+
     event.preventDefault();
   }
 
@@ -378,8 +430,8 @@ function setupPortfolioSlider() {
     waitForImages();
     setupIntroObserver();
 
-    viewport.addEventListener("mousemove", handleDesktopMove);
-    viewport.addEventListener("mouseleave", handleDesktopLeave);
+    viewport.addEventListener("mousemove", handleMouseMove);
+    viewport.addEventListener("mouseleave", handleMouseLeave);
 
     viewport.addEventListener("pointerdown", handlePointerDown);
     viewport.addEventListener("pointermove", handlePointerMove);
@@ -395,15 +447,11 @@ function setupPortfolioSlider() {
     clearTimeout(resizeTimer);
 
     resizeTimer = setTimeout(() => {
-      const wasIntroPlayed = hasIntroPlayed;
+      isReady = false;
+      shouldPlayIntro = false;
 
       renderSlides();
       waitForImages();
-
-      if (wasIntroPlayed) {
-        x = clamp(x, minX, maxX);
-        applyTransform();
-      }
     }, 120);
   });
 }
@@ -411,34 +459,46 @@ function setupPortfolioSlider() {
 /* =========================
      FAQ accordions
    ========================= */
-
 function setupFaqAccordions() {
   const list = document.querySelector(".faq__list");
+
   if (!list) return;
 
   const items = Array.from(list.querySelectorAll(".faq-item"));
-  if (!items.length) return;
-  let saved = parseInt(localStorage.getItem("faqOpenIndex"), 10);
-  if (Number.isNaN(saved) || saved < 0 || saved >= items.length) saved = 0;
 
-  items.forEach((d, i) => {
-    d.open = i === saved;
+  if (!items.length) return;
+
+  let saved = parseInt(localStorage.getItem("faqOpenIndex"), 10);
+
+  if (Number.isNaN(saved) || saved < 0 || saved >= items.length) {
+    saved = 0;
+  }
+
+  items.forEach((item, index) => {
+    item.open = index === saved;
   });
 
-  items.forEach((d, i) => {
-    d.addEventListener("toggle", () => {
-      if (d.open) {
-        items.forEach((other) => {
-          if (other !== d) other.open = false;
+  items.forEach((item, index) => {
+    item.addEventListener("toggle", () => {
+      if (item.open) {
+        items.forEach((otherItem) => {
+          if (otherItem !== item) {
+            otherItem.open = false;
+          }
         });
-        localStorage.setItem("faqOpenIndex", String(i));
+
+        localStorage.setItem("faqOpenIndex", String(index));
       } else {
-        const anyOpen = items.some((it) => it.open);
-        if (!anyOpen) localStorage.setItem("faqOpenIndex", "-1");
+        const anyOpen = items.some((detailsItem) => detailsItem.open);
+
+        if (!anyOpen) {
+          localStorage.setItem("faqOpenIndex", "-1");
+        }
       }
     });
 
-    const header = d.querySelector(".faq-q");
+    const header = item.querySelector(".faq-q");
+
     if (header) {
       header.style.cursor = "pointer";
     }
@@ -451,6 +511,7 @@ function setupFaqAccordions() {
 function setupBookingModal() {
   const openers = document.querySelectorAll(".price-card__btn");
   const modal = document.getElementById("booking-modal");
+
   if (!openers.length || !modal) return;
 
   const dialog = modal.querySelector(".modal__dialog");
@@ -459,7 +520,10 @@ function setupBookingModal() {
     modal.classList.add("modal--open");
     modal.removeAttribute("hidden");
     document.body.classList.add("no-scroll");
-    dialog.focus({ preventScroll: true });
+
+    if (dialog) {
+      dialog.focus({ preventScroll: true });
+    }
   };
 
   const close = () => {
@@ -468,20 +532,27 @@ function setupBookingModal() {
     modal.setAttribute("hidden", "");
   };
 
-  openers.forEach((btn) => btn.addEventListener("click", open));
-
-  modal.addEventListener("click", (e) => {
-    if (e.target.hasAttribute("data-close")) close();
+  openers.forEach((button) => {
+    button.addEventListener("click", open);
   });
 
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") close();
+  modal.addEventListener("click", (event) => {
+    if (event.target.hasAttribute("data-close")) {
+      close();
+    }
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      close();
+    }
   });
 
   const form = modal.querySelector(".modal__form");
+
   if (form) {
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
       close();
     });
   }
@@ -493,10 +564,11 @@ function setupBookingModal() {
 function setupScrollDown() {
   const scrollBtn = document.querySelector(".scroll");
   const aboutSection = document.querySelector("#about");
+
   if (!scrollBtn || !aboutSection) return;
 
-  scrollBtn.addEventListener("click", (e) => {
-    e.preventDefault();
+  scrollBtn.addEventListener("click", (event) => {
+    event.preventDefault();
     aboutSection.scrollIntoView({ behavior: "smooth" });
   });
 }
