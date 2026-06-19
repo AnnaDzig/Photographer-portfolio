@@ -75,10 +75,11 @@ function setupBurger() {
    PORTFOLIO SLIDER (PF)
    ========================= */
 function setupPortfolioSlider() {
+  const section = document.querySelector(".portfolio");
   const viewport = document.querySelector(".pf-viewport");
   const track = document.querySelector(".pf-track");
 
-  if (!viewport || !track) return;
+  if (!section || !viewport || !track) return;
 
   const PF_IMAGES = [
     { src: "image/png/img-20.png", alt: "Portfolio photo 1" },
@@ -132,6 +133,10 @@ function setupPortfolioSlider() {
     ],
   };
 
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
   const getBreakpoint = () => {
@@ -148,10 +153,17 @@ function setupPortfolioSlider() {
   let x = 0;
   let minX = 0;
   let maxX = 0;
-
   let rafId = null;
-  let hoverSpeed = 0;
   let lastTime = 0;
+
+  let hoverSpeed = 0;
+  let isDragging = false;
+  let startX = 0;
+  let startSliderX = 0;
+
+  let hasIntroPlayed = false;
+  let introActive = false;
+  let introTargetX = 0;
 
   function renderSlides() {
     track.innerHTML = "";
@@ -178,6 +190,10 @@ function setupPortfolioSlider() {
     });
   }
 
+  function applyTransform() {
+    track.style.transform = `translate3d(${Math.round(x)}px, -50%, 0)`;
+  }
+
   function calculateLimits() {
     const viewportWidth = viewport.clientWidth;
     const trackWidth = track.scrollWidth;
@@ -187,10 +203,6 @@ function setupPortfolioSlider() {
 
     x = clamp(x, minX, maxX);
     applyTransform();
-  }
-
-  function applyTransform() {
-    track.style.transform = `translate3d(${Math.round(x)}px, -50%, 0)`;
   }
 
   function waitForImages() {
@@ -221,27 +233,87 @@ function setupPortfolioSlider() {
     });
   }
 
-  function animate(timestamp) {
-    const delta = (timestamp - lastTime) / 1000;
-    lastTime = timestamp;
+  function startAnimation() {
+    if (rafId !== null) return;
 
-    if (hoverSpeed !== 0) {
-      x = clamp(x + hoverSpeed * delta, minX, maxX);
-      applyTransform();
-      rafId = requestAnimationFrame(animate);
-    } else {
-      rafId = null;
-    }
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(animate);
   }
 
-  function startAnimation() {
-    if (rafId === null) {
-      lastTime = performance.now();
-      rafId = requestAnimationFrame(animate);
+  function stopAnimationIfIdle() {
+    if (introActive || hoverSpeed !== 0 || isDragging) return;
+
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  function animate(timestamp) {
+    const delta = Math.min((timestamp - lastTime) / 1000, 0.04);
+    lastTime = timestamp;
+
+    if (introActive) {
+      x += (introTargetX - x) * 0.075;
+
+      if (Math.abs(introTargetX - x) < 1) {
+        x = introTargetX;
+        introActive = false;
+        track.classList.add("pf-track--intro-done");
+      }
+
+      applyTransform();
     }
+
+    if (!introActive && hoverSpeed !== 0 && !isDragging) {
+      x = clamp(x + hoverSpeed * delta, minX, maxX);
+      applyTransform();
+    }
+
+    rafId = requestAnimationFrame(animate);
+    stopAnimationIfIdle();
+  }
+
+  function playIntroAnimation() {
+    if (hasIntroPlayed || prefersReducedMotion) return;
+
+    hasIntroPlayed = true;
+    introActive = true;
+
+    const introOffset = viewport.clientWidth * 0.65;
+
+    x = clamp(-introOffset, minX, maxX);
+    introTargetX = 0;
+
+    track.classList.add("pf-track--intro");
+    applyTransform();
+    startAnimation();
+  }
+
+  function setupIntroObserver() {
+    if (!("IntersectionObserver" in window)) {
+      playIntroAnimation();
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+
+        if (entry.isIntersecting) {
+          playIntroAnimation();
+          observer.disconnect();
+        }
+      },
+      {
+        threshold: 0.35,
+      },
+    );
+
+    observer.observe(section);
   }
 
   function handleDesktopMove(event) {
+    if (isDragging) return;
+
     const rect = viewport.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const width = rect.width;
@@ -249,9 +321,13 @@ function setupPortfolioSlider() {
 
     if (mouseX < zone) {
       const power = 1 - mouseX / zone;
+
+      // Mouse on the left side -> images move to the right.
       hoverSpeed = 180 + 520 * power;
     } else if (mouseX > width - zone) {
       const power = 1 - (width - mouseX) / zone;
+
+      // Mouse on the right side -> images move to the left.
       hoverSpeed = -(180 + 520 * power);
     } else {
       hoverSpeed = 0;
@@ -264,16 +340,14 @@ function setupPortfolioSlider() {
     hoverSpeed = 0;
   }
 
-  let isDragging = false;
-  let startX = 0;
-  let startSliderX = 0;
-
   function handlePointerDown(event) {
     isDragging = true;
     startX = event.clientX;
     startSliderX = x;
 
+    introActive = false;
     hoverSpeed = 0;
+
     viewport.classList.add("is-dragging");
     viewport.setPointerCapture(event.pointerId);
   }
@@ -283,8 +357,8 @@ function setupPortfolioSlider() {
 
     const dx = event.clientX - startX;
     x = clamp(startSliderX + dx, minX, maxX);
-    applyTransform();
 
+    applyTransform();
     event.preventDefault();
   }
 
@@ -302,6 +376,7 @@ function setupPortfolioSlider() {
   function init() {
     renderSlides();
     waitForImages();
+    setupIntroObserver();
 
     viewport.addEventListener("mousemove", handleDesktopMove);
     viewport.addEventListener("mouseleave", handleDesktopLeave);
@@ -320,8 +395,15 @@ function setupPortfolioSlider() {
     clearTimeout(resizeTimer);
 
     resizeTimer = setTimeout(() => {
+      const wasIntroPlayed = hasIntroPlayed;
+
       renderSlides();
       waitForImages();
+
+      if (wasIntroPlayed) {
+        x = clamp(x, minX, maxX);
+        applyTransform();
+      }
     }, 120);
   });
 }
